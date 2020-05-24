@@ -2,11 +2,28 @@ import serial
 ser = serial.Serial('COM5')
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import matplotlib.animation as animation
 fig = plt.figure()
-ax1 = plt.subplot(121, polar=True)
-ax2 = plt.subplot(122)
+ax1 = plt.subplot(221, polar=True)
+ax2 = plt.subplot(222)
 ax3 = ax2.twinx()
+ax4 = plt.subplot(223)
+ax5 = plt.subplot(224)
+
+def setup(ax):
+    ax.spines['right'].set_color('none')
+    ax.spines['left'].set_color('none')
+    ax.yaxis.set_major_locator(ticker.NullLocator())
+    ax.spines['top'].set_color('none')
+    ax.xaxis.set_ticks_position('bottom')
+    ax.tick_params(which='major', width=1.00)
+    ax.tick_params(which='major', length=5)
+    ax.tick_params(which='minor', width=0.75)
+    ax.tick_params(which='minor', length=2.5)
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(0, 1)
+    ax.patch.set_alpha(0.0)
 
 import math
 
@@ -19,7 +36,11 @@ avq = collections.deque(maxlen=graphLength)
 stq = collections.deque(maxlen=graphLength)
 iq = collections.deque(maxlen=graphLength)
 
+offset = 15 # degrees
+offset = math.radians(offset)
 
+ax1.set_ylim(0,1)
+aBar = ax1.bar(x=0, height=1, width=0.05)
 
 ax2.set_title(f'Running statistics of last {stdevSamples} samples\n(degrees)')
 ax2.tick_params(
@@ -35,7 +56,6 @@ ax2.ticklabel_format(useOffset=False)
 ax2.margins(y=0.8)
 AvLine, = ax2.plot([], [], color='tab:red')
 
-ax3.clear()
 ax3.tick_params(
     axis = 'y',
     left = False,
@@ -45,7 +65,17 @@ ax3.tick_params(
     labelcolor = 'tab:blue'
 )
 ax3.set_ylabel('St. Dev.')
+ax3.set_ylim(0,0.5)
 DevLine, = ax3.plot([], [], color='tab:blue')
+
+setup(ax4)
+ax4.xaxis.set_major_locator(ticker.MultipleLocator(0.5))
+ax4.xaxis.set_minor_locator(ticker.MultipleLocator(0.1))
+Zline, = ax4.plot(4,0,'|', ms = 30, mfc = 'r')
+
+ax5.set_ylim(-1,1)
+tBars = ax5.bar(['x','y','z'],[1,-1,1])
+
 
 def compute_angle(theta):
     # augment angle using y=mx+b+k*sin(o*x+t)
@@ -73,32 +103,18 @@ def animate(i):
 
     uT = getteslas()
     # normalise between -1 and 1
-    sum = abs(uT[0]) + abs(uT[1])
-    uT_norm = (uT[0]/sum, uT[1]/sum)
-
-    # plot live values
-    ax1.clear()
-    plt.ylim(0,1)
+    sum = abs(uT[0]) + abs(uT[1]) + abs(uT[2])
+    uT_norm = (uT[0]/sum, uT[1]/sum, uT[2]/sum)
+    
     plt.setp(ax1.get_yticklabels(), visible=False)
-
-    if uT_norm[0] < 0:
-        ax1.bar(x=math.pi, height=abs(uT_norm[0]),width=0.05)
-    else:
-        ax1.bar(x=0, height=uT_norm[0], width=0.05)
-
-    if uT_norm[1] < 0:
-        ax1.bar(x=1.5*math.pi, height=abs(uT_norm[1]),width=0.05)
-    else:
-        ax1.bar(x=math.pi/2, height=uT_norm[1], width=0.05)
 
     theta = math.atan2(uT_norm[1], uT_norm[0])
     if theta < 0:
         theta += 2*math.pi
+    # adjust for magnetic variance and mechanical angle offset
+    theta = compute_angle(theta)# - offset
 
-    # adjust for magnetic varianc
-    theta = compute_angle(theta)
-
-    ax1.bar(x=theta, height=1, width=0.05)
+    aBar[0].set_x(theta)
 
     # calculate and display some statistics
     q.append(math.degrees(theta))
@@ -110,31 +126,20 @@ def animate(i):
     stq.append(st)
     avq.append(av)
     
-    
-    # ax2.clear()
-    # ax2.set_title(f'Running statistics of last {stdevSamples} samples\n(degrees)')
-    # ax2.tick_params(
-    #     axis = 'y',
-    #     left = True,
-    #     right = False,
-    #     labelleft = True,
-    #     labelright = False,
-    #     labelcolor = 'tab:red'
-    # )
-    # ax2.set_ylabel('Average')
-    # ax2.plot(iq, avq, color='tab:red')
-
-
     AvLine.set_data(iq, avq)
+    # autoscale to values
     ax2.relim()
     ax2.autoscale_view()
 
     DevLine.set_data(iq, stq)
-    ax3.relim()
-    ax3.autoscale_view()
 
-    
+    Zline.set_data(uT_norm[2], 0)
+
+    # bars don't have a proper set_data method but we make do
+    for rect, uT in zip(tBars, uT_norm):
+        rect.set_height(uT)
+
     plt.pause(0.01)
 
-ani = animation.FuncAnimation(fig, animate, interval=0)
+ani = animation.FuncAnimation(fig, animate, interval=50)
 plt.show()
